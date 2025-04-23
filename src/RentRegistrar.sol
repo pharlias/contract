@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
 import "./NFTRegistrar.sol";
+import "./ENSRegistry.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-interface ENSRegistry {
-    function setOwner(bytes32 node, address owner) external;
-}
 
-contract RentRegistrar {
+contract RentRegistrar is Ownable{
     ENSRegistry public ens;
     NFTRegistrar public nft;
-    string public tokenURI = "https://your-nft-metadata-api/";
     bytes32 public rootNode;
     uint256 public yearlyRent = 0.0001 ether;
 
@@ -21,7 +19,7 @@ contract RentRegistrar {
 
     mapping(bytes32 => Domain) public domains;
 
-    constructor(ENSRegistry _ens, NFTRegistrar _nft, bytes32 _rootNode) {
+    constructor(ENSRegistry _ens, NFTRegistrar _nft, bytes32 _rootNode) Ownable(msg.sender) {
         ens = _ens;
         nft = _nft;
         rootNode = _rootNode;
@@ -37,7 +35,7 @@ contract RentRegistrar {
         return domain.expires < block.timestamp;
     }
 
-    function register(string memory name, address owner, uint256 durationInYears) external payable {
+    function register(string memory name, address owner, uint256 durationInYears, string memory tokenURI) external payable {
         require(durationInYears >= 1, "Min 1 year");
         bytes32 label = keccak256(bytes(name));
         require(isAvailable(name), "Domain not available");
@@ -92,7 +90,6 @@ contract RentRegistrar {
     }
 
     function withdraw() external onlyOwner {
-        // Gampangin dulu: untuk dev aja
         payable(msg.sender).transfer(address(this).balance);
     }
 }

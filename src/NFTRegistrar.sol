@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract NFTRegistrar is ERC721URIStorage, Ownable {
+contract NFTRegistrar is ERC721URIStorage, Ownable(msg.sender) {
     uint256 public tokenCounter;
 
     constructor() ERC721("Pharos Name Sevice", "Pharoswho") {}
