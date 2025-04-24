@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract ENSRegistry {
+contract ENSRegistry is Ownable {
     struct Record {
         address owner;
         address resolver;
@@ -10,9 +11,16 @@ contract ENSRegistry {
     }
 
     mapping(bytes32 => Record) records;
+    
+    constructor() Ownable(msg.sender) {}
 
     function setOwner(bytes32 node, address newOwner) external {
-        require(msg.sender == records[node].owner, "Not authorized");
+        require(
+            owner() == msg.sender || 
+            records[node].owner == address(0) || 
+            msg.sender == records[node].owner, 
+            "Not authorized"
+        );
         records[node].owner = newOwner;
     }
 
@@ -21,7 +29,11 @@ contract ENSRegistry {
     }
 
     function setResolver(bytes32 node, address newResolver) external {
-        require(msg.sender == records[node].owner, "Not authorized");
+        require(
+            owner() == msg.sender || 
+            msg.sender == records[node].owner, 
+            "Not authorized"
+        );
         records[node].resolver = newResolver;
     }
 
