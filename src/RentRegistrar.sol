@@ -37,12 +37,10 @@ contract RentRegistrar is Ownable{
 
     function register(string memory name, address owner, uint256 durationInYears, string memory tokenURI) external payable {
         require(durationInYears >= 1, "Min 1 year");
-        bytes32 label = keccak256(bytes(name));
         require(isAvailable(name), "Domain not available");
+        require(msg.value == rentPrice(durationInYears), "Insufficient payment");
 
-        uint256 price = rentPrice(durationInYears);
-        require(msg.value >= price, "Insufficient payment");
-
+        bytes32 label = keccak256(bytes(name));
         bytes32 node = keccak256(abi.encodePacked(rootNode, label));
         uint256 expires = block.timestamp + durationInYears * 365 days;
 
@@ -55,13 +53,12 @@ contract RentRegistrar is Ownable{
     }
 
     function renew(string memory name, uint256 additionalYears) external payable {
+        require(domains[keccak256(bytes(name))].owner != address(0), "Domain not registered");
+        require(msg.sender == domains[keccak256(bytes(name))].owner, "Not domain owner");
+        require(msg.value >= rentPrice(additionalYears), "Insufficient payment");
+
         bytes32 label = keccak256(bytes(name));
         Domain storage domain = domains[label];
-        require(domain.owner != address(0), "Domain not registered");
-        require(msg.sender == domain.owner, "Not domain owner");
-
-        uint256 price = rentPrice(additionalYears);
-        require(msg.value >= price, "Insufficient payment");
 
         if (domain.expires < block.timestamp) {
             domain.expires = block.timestamp + additionalYears * 365 days;
@@ -71,25 +68,24 @@ contract RentRegistrar is Ownable{
     }
 
     function transferOwnership(string memory name, address newOwner) external {
+        require(msg.sender == domains[keccak256(bytes(name))].owner, "Not owner");
+
         bytes32 label = keccak256(bytes(name));
         Domain storage domain = domains[label];
-        require(msg.sender == domain.owner, "Not owner");
 
         domain.owner = newOwner;
         bytes32 node = keccak256(abi.encodePacked(rootNode, label));
         ens.setOwner(node, newOwner);
 
-        // Transfer the NFT to the new owner
-        uint256 tokenId = uint256(label);  // use label as unique tokenId
+        uint256 tokenId = uint256(label);
         nft.safeTransferFrom(msg.sender, newOwner, tokenId);
     }
-
 
     function domainExpires(string memory name) external view returns (uint256) {
         return domains[keccak256(bytes(name))].expires;
     }
 
-    function withdraw() external onlyOwner {
-        payable(msg.sender).transfer(address(this).balance);
+    function withdraw(address withdrawAddress) external onlyOwner {
+        payable(withdrawAddress).transfer(address(this).balance);
     }
 }

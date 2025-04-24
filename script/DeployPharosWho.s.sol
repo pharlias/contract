@@ -22,10 +22,15 @@ contract DeployPharosWho is Script {
         NFTRegistrar nft = new NFTRegistrar();
         console.log("NFTRegistrar deployed at:", address(nft));
 
-        bytes32 rootNode = keccak256(abi.encodePacked("pharos"));
-
+        bytes32 rootNode = keccak256(abi.encodePacked(bytes32(0), keccak256(abi.encodePacked("pharos"))));
+        
+        ens.setOwner(rootNode, address(this));
+        
         RentRegistrar rent = new RentRegistrar(ens, nft, rootNode);
         console.log("RentRegistrar deployed at:", address(rent));
+
+        ens.setOwner(rootNode, address(rent));
+        console.log("Root node ownership transferred to RentRegistrar");
 
         nft.transferOwnership(address(rent));
         console.log("NFTRegistrar ownership transferred to RentRegistrar");
