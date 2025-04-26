@@ -5,195 +5,440 @@ import "./NFTRegistrar.sol";
 import "./ENSRegistry.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
+/**
+ * @title RentRegistrar
+ * @dev Contract for managing domain registration, renewal, and transfers with ENS integration
+ * @notice This contract allows users to register, renew, and transfer domain names
+ */
 contract RentRegistrar is Ownable {
-    // Custom errors for better gas efficiency and error reporting
-    error InvalidRegistryAddress();
-    error InvalidNFTRegistrarAddress();
-    error InvalidRootNode();
-    error InsufficientDuration(uint256 provided, uint256 minimum);
-    error DomainNotAvailable(string name);
-    error InsufficientPayment(uint256 required, uint256 provided);
-    error DomainNotRegistered(string name);
-    error NotDomainOwner(string name, address caller, address owner);
-    error NoFundsToWithdraw();
-    error TransferFailed();
-    error NFTMintFailed(uint256 tokenId);
-    error NFTBurnFailed(uint256 tokenId);
-    error DomainExpired(string name, uint256 expiry);
+    // ================ Custom Errors ================
+    error RentRegistrar__InvalidRegistryAddress();
+    error RentRegistrar__InvalidNFTRegistrarAddress();
+    error RentRegistrar__InvalidRootNode();
+    error RentRegistrar__InvalidNewOwner();
+    error RentRegistrar__InsufficientDuration(
+        uint256 provided,
+        uint256 minimum
+    );
+    error RentRegistrar__DomainNotAvailable(string name);
+    error RentRegistrar__InsufficientPayment(
+        uint256 required,
+        uint256 provided
+    );
+    error RentRegistrar__DomainNotRegistered(string name);
+    error RentRegistrar__NotDomainOwner(
+        string name,
+        address caller,
+        address owner
+    );
+    error RentRegistrar__NoFundsToWithdraw();
+    error RentRegistrar__TransferFailed();
+    error RentRegistrar__NFTMintFailed(uint256 tokenId);
+    error RentRegistrar__NFTBurnFailed(uint256 tokenId);
+    error RentRegistrar__NFTTransferFailed(uint256 tokenId);
+    error RentRegistrar__DomainExpired(string name, uint256 expiry);
+    error RentRegistrar__ENSUpdateFailed(bytes32 node);
+    error RentRegistrar__InvalidENSNode();
+
+    // ================ State Variables ================
+    /// @notice ENS registry contract reference
     ENSRegistry public ens;
+
+    /// @notice NFT token contract reference
     NFTRegistrar public nft;
+
+    /// @notice Root node for domain names in the ENS registry
     bytes32 public rootNode;
+
+    /// @notice Yearly rent price for domain registration
     uint256 public yearlyRent = 0.0001 ether;
 
+    // ================ Events ================
+    /**
+     * @notice Emitted when a domain is registered
+     * @param name Domain name
+     * @param owner Owner address
+     * @param expires Expiration timestamp
+     * @param tokenId NFT token ID
+     */
     event DomainRegistered(
-        string name,
-        address owner,
+        string indexed name,
+        address indexed owner,
         uint256 expires,
         uint256 tokenId
     );
-    event DomainRenewed(string name, address owner, uint256 newExpiry);
+
+    /**
+     * @notice Emitted when a domain is renewed
+     * @param name Domain name
+     * @param owner Owner address
+     * @param newExpiry New expiration timestamp
+     */
+    event DomainRenewed(
+        string indexed name,
+        address indexed owner,
+        uint256 newExpiry
+    );
+
+    /**
+     * @notice Emitted when a domain ownership is transferred
+     * @param name Domain name
+     * @param from Previous owner
+     * @param to New owner
+     * @param tokenId NFT token ID
+     */
     event DomainTransferred(
-        string name,
-        address from,
-        address to,
+        string indexed name,
+        address indexed from,
+        address indexed to,
         uint256 tokenId
     );
-    event FundsWithdrawn(address owner, uint256 amount);
 
+    /**
+     * @notice Emitted when funds are withdrawn by contract owner
+     * @param owner Contract owner address
+     * @param amount Amount withdrawn
+     */
+    event FundsWithdrawn(address indexed owner, uint256 amount);
+
+    /**
+     * @notice Emitted when ENS records are updated
+     * @param node ENS node hash
+     * @param owner New owner address
+     */
+    event ENSRecordUpdated(bytes32 indexed node, address indexed owner);
+
+    // ================ Struct Definitions ================
+    /**
+     * @dev Domain ownership and expiry information
+     * @param owner Address of the domain owner
+     * @param expires Timestamp when domain registration expires
+     */
     struct Domain {
         address owner;
         uint256 expires;
     }
 
+    // ================ Storage ================
+    /// @dev Mapping from domain name hash to Domain struct
     mapping(bytes32 => Domain) public domains;
 
+    // ================ Constructor ================
+    /**
+     * @notice Contract constructor
+     * @param _ens Address of the ENS registry contract
+     * @param _nft Address of the NFT registry contract
+     * @param _rootNode Root node for domain names
+     */
     constructor(
         ENSRegistry _ens,
         NFTRegistrar _nft,
         bytes32 _rootNode
     ) Ownable(msg.sender) {
         if (address(_ens) == address(0)) {
-            revert InvalidRegistryAddress();
+            revert RentRegistrar__InvalidRegistryAddress();
         }
         if (address(_nft) == address(0)) {
-            revert InvalidNFTRegistrarAddress();
+            revert RentRegistrar__InvalidNFTRegistrarAddress();
         }
         if (_rootNode == bytes32(0)) {
-            revert InvalidRootNode();
+            revert RentRegistrar__InvalidRootNode();
         }
-        
+
         ens = _ens;
         nft = _nft;
         rootNode = _rootNode;
+
+        // Verify ownership of root node - contract must be able to control root node
+        address rootOwner = _ens.owner(_rootNode);
+        if (rootOwner != address(this) && rootOwner != msg.sender) {
+            revert RentRegistrar__InvalidRootNode();
+        }
     }
 
+    // ================ External Functions ================
+    /**
+     * @notice Calculate the rent price for a given duration
+     * @param numYears Number of years for domain registration
+     * @return Price in wei
+     */
     function rentPrice(uint256 numYears) public view returns (uint256) {
         return yearlyRent * numYears;
     }
 
+    /**
+     * @notice Check if a domain name is available for registration
+     * @param name Domain name to check
+     * @return True if domain is available
+     */
     function isAvailable(string memory name) public view returns (bool) {
         bytes32 label = keccak256(bytes(name));
         Domain memory domain = domains[label];
         return domain.expires < block.timestamp;
     }
 
+    /**
+     * @notice Register a new domain name
+     * @param name Domain name to register
+     * @param owner Address that will own the domain
+     * @param durationInYears Registration duration in years
+     * @param tokenURI URI for the NFT metadata
+     */
     function register(
         string memory name,
         address owner,
         uint256 durationInYears,
         string memory tokenURI
     ) external payable {
+        // Validate inputs
         if (durationInYears < 1) {
-            revert InsufficientDuration(durationInYears, 1);
+            revert RentRegistrar__InsufficientDuration(durationInYears, 1);
         }
-        
-        bytes32 label = keccak256(bytes(name));
-        
-        if (!isAvailable(name)) {
-            revert DomainNotAvailable(name);
+        if (owner == address(0)) {
+            revert RentRegistrar__InvalidNewOwner();
         }
 
+        bytes32 label = keccak256(bytes(name));
+
+        // Check domain availability
+        if (!isAvailable(name)) {
+            revert RentRegistrar__DomainNotAvailable(name);
+        }
+
+        // Check payment
         uint256 price = rentPrice(durationInYears);
         if (msg.value < price) {
-            revert InsufficientPayment(price, msg.value);
+            revert RentRegistrar__InsufficientPayment(price, msg.value);
         }
 
+        // Create ENS node
         bytes32 node = keccak256(abi.encodePacked(rootNode, label));
+        if (node == bytes32(0)) {
+            revert RentRegistrar__InvalidENSNode();
+        }
+
+        // Calculate expiration
         uint256 expires = block.timestamp + durationInYears * 365 days;
 
+        // Update domain record
         domains[label] = Domain(owner, expires);
-        ens.setOwner(node, owner);
 
+        // Verify control of root node first
+        address rootOwner = ens.owner(rootNode);
+        if (rootOwner != address(this)) {
+            revert RentRegistrar__ENSUpdateFailed(rootNode);
+        }
+
+        // Update ENS record - use setSubnodeOwner for proper hierarchy
+        try ens.setSubnodeOwner(rootNode, label, owner) {
+            emit ENSRecordUpdated(node, owner);
+        } catch {
+            revert RentRegistrar__ENSUpdateFailed(node);
+        }
         uint256 tokenId = uint256(label);
-        bool success = nft.mint(owner, tokenId, tokenURI);
+
+        // Before minting new NFT, try to burn any existing token
+        try nft.ownerOf(tokenId) returns (address) {
+            // Token exists, burn it first
+            bool burnSuccess = nft.burn(tokenId);
+            if (!burnSuccess) {
+                revert RentRegistrar__NFTBurnFailed(tokenId);
+            }
+        } catch {
+            // Token doesn't exist, which is fine
+        }
+
+        // Now mint new NFT
+        bool success = nft.mint(owner, tokenId, tokenURI, name);
         if (!success) {
-            revert NFTMintFailed(tokenId);
+            revert RentRegistrar__NFTMintFailed(tokenId);
         }
 
         emit DomainRegistered(name, owner, expires, tokenId);
     }
 
+    /**
+     * @notice Renew a domain registration
+     * @param name Domain name to renew
+     * @param additionalYears Number of additional years to add
+     */
     function renew(
         string memory name,
         uint256 additionalYears
     ) external payable {
+        // Validate inputs
+        if (additionalYears < 1) {
+            revert RentRegistrar__InsufficientDuration(additionalYears, 1);
+        }
+
         bytes32 label = keccak256(bytes(name));
         Domain storage domain = domains[label];
-        
+
+        // Check domain registration
         if (domain.owner == address(0)) {
-            revert DomainNotRegistered(name);
-        }
-        
-        if (msg.sender != domain.owner) {
-            revert NotDomainOwner(name, msg.sender, domain.owner);
+            revert RentRegistrar__DomainNotRegistered(name);
         }
 
+        // Check ownership
+        if (msg.sender != domain.owner) {
+            revert RentRegistrar__NotDomainOwner(
+                name,
+                msg.sender,
+                domain.owner
+            );
+        }
+
+        // Check payment
         uint256 price = rentPrice(additionalYears);
         if (msg.value < price) {
-            revert InsufficientPayment(price, msg.value);
+            revert RentRegistrar__InsufficientPayment(price, msg.value);
         }
 
+        // Update expiration date
         if (domain.expires < block.timestamp) {
+            // If already expired, start fresh from current time
             domain.expires = block.timestamp + additionalYears * 365 days;
         } else {
+            // Otherwise add to existing expiration
             domain.expires += additionalYears * 365 days;
         }
 
         emit DomainRenewed(name, domain.owner, domain.expires);
     }
 
+    /**
+     * @notice Transfer domain ownership to a new address
+     * @param name Domain name to transfer
+     * @param newOwner New owner address
+     */
     function transferOwnership(string memory name, address newOwner) external {
+        // Validate inputs
+        if (newOwner == address(0)) {
+            revert RentRegistrar__InvalidNewOwner();
+        }
+
         bytes32 label = keccak256(bytes(name));
         Domain storage domain = domains[label];
 
+        // Check domain registration
         if (domain.owner == address(0)) {
-            revert DomainNotRegistered(name);
-        }
-        
-        if (msg.sender != domain.owner) {
-            revert NotDomainOwner(name, msg.sender, domain.owner);
-        }
-        
-        if (domain.expires < block.timestamp) {
-            revert DomainExpired(name, domain.expires);
+            revert RentRegistrar__DomainNotRegistered(name);
         }
 
+        // Check ownership
+        if (msg.sender != domain.owner) {
+            revert RentRegistrar__NotDomainOwner(
+                name,
+                msg.sender,
+                domain.owner
+            );
+        }
+
+        // Check expiration
+        if (domain.expires < block.timestamp) {
+            revert RentRegistrar__DomainExpired(name, domain.expires);
+        }
+
+        // Get token ID and URI
         uint256 tokenId = uint256(label);
         string memory uri = nft.tokenURI(tokenId);
 
+        // Store previous owner for event emission
+        address previousOwner = domain.owner;
+
+        // Update domain ownership record
         domain.owner = newOwner;
 
+        // Verify control of root node first
+        address rootOwner = ens.owner(rootNode);
+        if (rootOwner != address(this)) {
+            revert RentRegistrar__ENSUpdateFailed(rootNode);
+        }
+
+        // Update ENS registry - use setSubnodeOwner for proper hierarchy
         bytes32 node = keccak256(abi.encodePacked(rootNode, label));
-        ens.setOwner(node, newOwner);
-
-        bool burnSuccess = nft.burn(tokenId);
-        if (!burnSuccess) {
-            revert NFTBurnFailed(tokenId);
+        try ens.setSubnodeOwner(rootNode, label, newOwner) {
+            emit ENSRecordUpdated(node, newOwner);
+        } catch {
+            revert RentRegistrar__ENSUpdateFailed(node);
         }
 
-        bool mintSuccess = nft.mint(newOwner, tokenId, uri);
+        // Handle NFT transfer in a safer way
+        // First check if the NFT exists
+        try nft.ownerOf(tokenId) returns (address /* currentOwner */) {
+            // If token exists, burn it
+            bool burnSuccess = nft.burn(tokenId);
+            if (!burnSuccess) {
+                revert RentRegistrar__NFTBurnFailed(tokenId);
+            }
+        } catch {
+            // Token doesn't exist, which is fine - continue
+        }
+
+        // Mint new NFT to the new owner
+        bool mintSuccess = nft.mint(newOwner, tokenId, uri, name);
         if (!mintSuccess) {
-            revert NFTMintFailed(tokenId);
+            revert RentRegistrar__NFTMintFailed(tokenId);
         }
 
-        emit DomainTransferred(name, msg.sender, newOwner, tokenId);
+        emit DomainTransferred(name, previousOwner, newOwner, tokenId);
     }
 
+    /**
+     * @notice Get domain expiration timestamp
+     * @param name Domain name to check
+     * @return Expiration timestamp
+     */
     function domainExpires(string memory name) external view returns (uint256) {
         return domains[keccak256(bytes(name))].expires;
     }
 
+    /**
+     * @notice Get ENS node for a domain name
+     * @param name Domain name
+     * @return ENS node hash
+     */
+    function getNode(string memory name) public view returns (bytes32) {
+        bytes32 label = keccak256(bytes(name));
+        return keccak256(abi.encodePacked(rootNode, label));
+    }
+
+    /**
+     * @notice Check if a domain is owned by an address
+     * @param name Domain name to check
+     * @param owner Address to check
+     * @return True if owner matches
+     */
+    function isDomainOwner(
+        string memory name,
+        address owner
+    ) public view returns (bool) {
+        bytes32 label = keccak256(bytes(name));
+        return domains[label].owner == owner;
+    }
+
+    /**
+     * @notice Withdraw contract funds to owner
+     */
     function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
         if (balance == 0) {
-            revert NoFundsToWithdraw();
+            revert RentRegistrar__NoFundsToWithdraw();
         }
-        
+
         (bool success, ) = payable(owner()).call{value: balance}("");
         if (!success) {
-            revert TransferFailed();
+            revert RentRegistrar__TransferFailed();
         }
 
         emit FundsWithdrawn(owner(), balance);
+    }
+
+    /**
+     * @notice Update the yearly rent price
+     * @param newYearlyRent New yearly rent in wei
+     */
+    function updateYearlyRent(uint256 newYearlyRent) external onlyOwner {
+        yearlyRent = newYearlyRent;
     }
 }
