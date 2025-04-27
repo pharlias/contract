@@ -62,7 +62,7 @@ contract RentRegistrar is Ownable {
      * @param tokenId NFT token ID
      */
     event DomainRegistered(
-        string indexed name,
+        string name,
         address indexed owner,
         uint256 expires,
         uint256 tokenId
@@ -75,7 +75,7 @@ contract RentRegistrar is Ownable {
      * @param newExpiry New expiration timestamp
      */
     event DomainRenewed(
-        string indexed name,
+        string name,
         address indexed owner,
         uint256 newExpiry
     );
@@ -88,7 +88,7 @@ contract RentRegistrar is Ownable {
      * @param tokenId NFT token ID
      */
     event DomainTransferred(
-        string indexed name,
+        string name,
         address indexed from,
         address indexed to,
         uint256 tokenId
