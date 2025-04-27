@@ -37,18 +37,18 @@ contract RentRegistrarTest is Test {
 
     // Events to test
     event DomainRegistered(
-        string indexed name,
+        string name,
         address indexed owner,
         uint256 expires,
         uint256 tokenId
     );
     event DomainRenewed(
-        string indexed name,
+        string name,
         address indexed owner,
         uint256 newExpiry
     );
     event DomainTransferred(
-        string indexed name,
+        string name,
         address indexed from,
         address indexed to,
         uint256 tokenId
@@ -175,7 +175,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify and return expiry time
-        (, expiry) = rentRegistrar.domains(keccak256(bytes(name)));
+        (, expiry) = rentRegistrar.domains(name);
         return expiry;
     }
 
@@ -219,9 +219,7 @@ contract RentRegistrarTest is Test {
         ensRegistry.setOwner(node, USER1);
 
         // Verify domain registration
-        (address owner, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (address owner, ) = rentRegistrar.domains(DOMAIN_NAME);
         assertEq(owner, USER1);
 
         // Verify NFT was minted
@@ -248,12 +246,8 @@ contract RentRegistrarTest is Test {
         registerDomain(USER2, DOMAIN_NAME_2, REGISTRATION_YEARS);
 
         // Verify both domains
-        (address owner1, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
-        (address owner2, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME_2))
-        );
+        (address owner1, ) = rentRegistrar.domains(DOMAIN_NAME);
+        (address owner2, ) = rentRegistrar.domains(DOMAIN_NAME_2);
 
         assertEq(owner1, USER1);
         assertEq(owner2, USER2);
@@ -285,9 +279,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify domain renewal
-        (, uint256 newExpires) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (, uint256 newExpires) = rentRegistrar.domains(DOMAIN_NAME);
         assertGt(newExpires, initialExpires);
         uint256 expectedExpiry = initialExpires +
             (REGISTRATION_YEARS * SECONDS_PER_YEAR);
@@ -317,9 +309,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify renewal starts from current time
-        (, uint256 newExpires) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (, uint256 newExpires) = rentRegistrar.domains(DOMAIN_NAME);
         uint256 expectedExpiry = calculateExpiration(
             REGISTRATION_YEARS,
             block.timestamp
@@ -352,9 +342,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify domain ownership changed
-        (address owner, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (address owner, ) = rentRegistrar.domains(DOMAIN_NAME);
         assertEq(owner, USER2);
 
         // Verify NFT ownership changed
@@ -390,9 +378,7 @@ contract RentRegistrarTest is Test {
         ensRegistry.setOwner(node, USER3);
 
         // Verify final ownership
-        (address owner, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (address owner, ) = rentRegistrar.domains(DOMAIN_NAME);
         assertEq(owner, USER3);
         assertEq(nftRegistrar.ownerOf(getTokenId(DOMAIN_NAME)), USER3);
         assertEq(ensRegistry.owner(getNode(DOMAIN_NAME)), USER3);
@@ -405,9 +391,7 @@ contract RentRegistrarTest is Test {
         registerDomain(USER1, DOMAIN_NAME, REGISTRATION_YEARS);
 
         // Verify the domain is actually registered
-        (address owner, ) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (address owner, ) = rentRegistrar.domains(DOMAIN_NAME);
         assertEq(owner, USER1);
         assertFalse(rentRegistrar.isAvailable(DOMAIN_NAME));
 
@@ -461,9 +445,7 @@ contract RentRegistrarTest is Test {
         registerDomain(USER1, DOMAIN_NAME, REGISTRATION_YEARS);
 
         // Fast forward past expiration
-        (, uint256 expires) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (, uint256 expires) = rentRegistrar.domains(DOMAIN_NAME);
         // Add a significant buffer past expiration to avoid any timing issues
         vm.warp(expires + 7 days);
 
@@ -551,9 +533,7 @@ contract RentRegistrarTest is Test {
         assertFalse(rentRegistrar.isAvailable(DOMAIN_NAME));
 
         // Fast forward past expiration
-        (, uint256 expires) = rentRegistrar.domains(
-            keccak256(bytes(DOMAIN_NAME))
-        );
+        (, uint256 expires) = rentRegistrar.domains(DOMAIN_NAME);
         // Add a significant buffer past expiration to avoid any timing issues
         vm.warp(expires + 7 days);
 
@@ -721,7 +701,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify initial state
-        (address initialOwner, uint256 expires) = rentRegistrar.domains(label);
+        (address initialOwner, uint256 expires) = rentRegistrar.domains(testDomain);
         assertEq(initialOwner, USER1);
         assertEq(nftRegistrar.ownerOf(tokenId), USER1);
         assertEq(ensRegistry.owner(node), USER1);
@@ -748,7 +728,7 @@ contract RentRegistrarTest is Test {
         vm.stopPrank();
 
         // Verify final state
-        (address finalOwner, ) = rentRegistrar.domains(label);
+        (address finalOwner, ) = rentRegistrar.domains(testDomain);
         assertEq(finalOwner, USER2, "USER2 should be the new domain owner");
         assertEq(
             nftRegistrar.ownerOf(tokenId),
@@ -933,9 +913,7 @@ contract RentRegistrarTest is Test {
 
         // Verify all transfers were successful
         for (uint i = 0; i < domains.length; i++) {
-            (address owner, ) = rentRegistrar.domains(
-                keccak256(bytes(domains[i]))
-            );
+            (address owner, ) = rentRegistrar.domains(domains[i]);
             assertEq(owner, USER2);
         }
     }

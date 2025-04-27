@@ -24,6 +24,7 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
     error NFTRegistrar__DomainNameNotFound(uint256 tokenId);
 
     // Events for better tracking and indexing
+    // Note: String parameters are intentionally not indexed to allow full value access
     event TokenMinted(
         address indexed to,
         uint256 indexed tokenId,

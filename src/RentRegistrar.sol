@@ -56,7 +56,7 @@ contract RentRegistrar is Ownable {
     // ================ Events ================
     /**
      * @notice Emitted when a domain is registered
-     * @param name Domain name
+     * @param name Domain name (not indexed to allow full value access)
      * @param owner Owner address
      * @param expires Expiration timestamp
      * @param tokenId NFT token ID
@@ -70,7 +70,7 @@ contract RentRegistrar is Ownable {
 
     /**
      * @notice Emitted when a domain is renewed
-     * @param name Domain name
+     * @param name Domain name (not indexed to allow full value access)
      * @param owner Owner address
      * @param newExpiry New expiration timestamp
      */
@@ -82,7 +82,7 @@ contract RentRegistrar is Ownable {
 
     /**
      * @notice Emitted when a domain ownership is transferred
-     * @param name Domain name
+     * @param name Domain name (not indexed to allow full value access)
      * @param from Previous owner
      * @param to New owner
      * @param tokenId NFT token ID
@@ -120,8 +120,8 @@ contract RentRegistrar is Ownable {
     }
 
     // ================ Storage ================
-    /// @dev Mapping from domain name hash to Domain struct
-    mapping(bytes32 => Domain) public domains;
+    /// @dev Mapping from domain name (plain text) to Domain struct
+    mapping(string => Domain) public domains;
 
     // ================ Constructor ================
     /**
@@ -172,8 +172,7 @@ contract RentRegistrar is Ownable {
      * @return True if domain is available
      */
     function isAvailable(string memory name) public view returns (bool) {
-        bytes32 label = keccak256(bytes(name));
-        Domain memory domain = domains[label];
+        Domain memory domain = domains[name];
         return domain.expires < block.timestamp;
     }
 
@@ -198,8 +197,6 @@ contract RentRegistrar is Ownable {
             revert RentRegistrar__InvalidNewOwner();
         }
 
-        bytes32 label = keccak256(bytes(name));
-
         // Check domain availability
         if (!isAvailable(name)) {
             revert RentRegistrar__DomainNotAvailable(name);
@@ -211,7 +208,8 @@ contract RentRegistrar is Ownable {
             revert RentRegistrar__InsufficientPayment(price, msg.value);
         }
 
-        // Create ENS node
+        // Create ENS label and node (only hashing where needed for ENS)
+        bytes32 label = keccak256(bytes(name));
         bytes32 node = keccak256(abi.encodePacked(rootNode, label));
         if (node == bytes32(0)) {
             revert RentRegistrar__InvalidENSNode();
@@ -220,8 +218,8 @@ contract RentRegistrar is Ownable {
         // Calculate expiration
         uint256 expires = block.timestamp + durationInYears * 365 days;
 
-        // Update domain record
-        domains[label] = Domain(owner, expires);
+        // Update domain record - now using plain name as key
+        domains[name] = Domain(owner, expires);
 
         // Verify control of root node first
         address rootOwner = ens.owner(rootNode);
@@ -271,8 +269,8 @@ contract RentRegistrar is Ownable {
             revert RentRegistrar__InsufficientDuration(additionalYears, 1);
         }
 
-        bytes32 label = keccak256(bytes(name));
-        Domain storage domain = domains[label];
+        // Use string directly as key in the mapping
+        Domain storage domain = domains[name];
 
         // Check domain registration
         if (domain.owner == address(0)) {
@@ -317,8 +315,8 @@ contract RentRegistrar is Ownable {
             revert RentRegistrar__InvalidNewOwner();
         }
 
-        bytes32 label = keccak256(bytes(name));
-        Domain storage domain = domains[label];
+        // Access domain directly by name
+        Domain storage domain = domains[name];
 
         // Check domain registration
         if (domain.owner == address(0)) {
@@ -339,7 +337,8 @@ contract RentRegistrar is Ownable {
             revert RentRegistrar__DomainExpired(name, domain.expires);
         }
 
-        // Get token ID and URI
+        // Hash for ENS and NFT purposes only where needed
+        bytes32 label = keccak256(bytes(name));
         uint256 tokenId = uint256(label);
         string memory uri = nft.tokenURI(tokenId);
 
@@ -390,7 +389,7 @@ contract RentRegistrar is Ownable {
      * @return Expiration timestamp
      */
     function domainExpires(string memory name) external view returns (uint256) {
-        return domains[keccak256(bytes(name))].expires;
+        return domains[name].expires;
     }
 
     /**
@@ -413,8 +412,7 @@ contract RentRegistrar is Ownable {
         string memory name,
         address owner
     ) public view returns (bool) {
-        bytes32 label = keccak256(bytes(name));
-        return domains[label].owner == owner;
+        return domains[name].owner == owner;
     }
 
     /**
