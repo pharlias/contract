@@ -10,20 +10,24 @@ contract ERC20Transfer {
 
     mapping(address => uint256) public interactionCount;
 
-    event TransferToENS(address indexed sender, bytes32 indexed node, uint256 amount);
+    event TransferToPNS(address indexed sender, bytes32 indexed node, uint256 amount);
 
     // Custom errors for better gas efficiency and clarity
     error InvalidETHAmount();
     error ResolverNotSet();
     error AddressNotSetInResolver();
     error ETHTransferFailed();
+    error InvalidName();
 
     constructor(address _pnsRegistry) {
         pnsRegistry = IPNSRegistry(_pnsRegistry);
     }
 
-    function transferToENS(bytes32 node) external payable {
+    function transferToPNS(string memory name) external payable {
+        if (bytes(name).length == 0) revert InvalidName();
         if (msg.value == 0) revert InvalidETHAmount();
+        
+        bytes32 node = keccak256(abi.encodePacked(bytes32(0), keccak256(bytes(name))));
 
         address resolverAddress = pnsRegistry.resolver(node);
         if (resolverAddress == address(0)) revert ResolverNotSet();
@@ -36,6 +40,6 @@ contract ERC20Transfer {
 
         interactionCount[msg.sender] += 1;
 
-        emit TransferToENS(msg.sender, node, msg.value);
+        emit TransferToPNS(msg.sender, node, msg.value);
     }
 }

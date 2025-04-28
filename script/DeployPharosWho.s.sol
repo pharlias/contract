@@ -6,6 +6,8 @@ import "../src/PNSRegistry.sol";
 import "../src/PublicResolver.sol";
 import "../src/NFTRegistrar.sol";
 import "../src/RentRegistrar.sol";
+import "../src/ERC20Transfer.sol";
+
 
 contract DeployPharosWho is Script {
     function run() external {
@@ -41,6 +43,10 @@ contract DeployPharosWho is Script {
             rootNode
         );
         console.log("RentRegistrar deployed at:", address(rent));
+
+        // Deploy ERC20Transfer
+        ERC20Transfer erc20Transfer = new ERC20Transfer(address(pns));
+        console.log("ERC20Transfer deployed at:", address(erc20Transfer));
 
         // Transfer ownership to RentRegistrar
         pns.setOwner(rootNode, address(rent));
