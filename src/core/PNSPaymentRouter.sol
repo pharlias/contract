@@ -634,12 +634,11 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
      * @notice Resolve a PNS name to its associated address
      * @param name The PNS name
      * @param node Optional pre-calculated node hash (to save gas)
-     * @return The resolved address
-     * @dev This function tries to resolve name using the following steps:
-     * 1. Find the node hash using the namehash algorithm
-     * 2. Check if a resolver is set for the node in the PNS registry
-     * 3. If resolver exists, get the address from the resolver
-     * 4. If no address is set, check the owner of the node as fallback
+     * @return The resolved address using the following resolution strategy:
+     * 1. If resolver is set and has an address, use that address
+     * 2. Otherwise, fall back to the node owner's address
+     * @dev This implementation follows a fallback pattern where the owner address
+     *      is used when either the resolver is not set or the resolver has no address
      */
     function resolvePNSNameToAddress(string calldata name, bytes32 node) public view returns (address) {
         // If node hash is not provided, calculate it
@@ -655,19 +654,16 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         
         // Get resolver address from PNS registry
         address resolver = pnsRegistry.resolver(node);
-        if (resolver == address(0)) {
-            // If no resolver is set, return the owner as fallback
-            return owner;
+        if (resolver != address(0)) {
+            // Try to get address from resolver
+            address addr = IPublicResolver(resolver).addr(node);
+            if (addr != address(0)) {
+                return addr;
+            }
         }
         
-        // Get address from resolver
-        address addr = IPublicResolver(resolver).addr(node);
-        if (addr == address(0)) {
-            // If no address is set in resolver, return the owner as fallback
-            return owner;
-        }
-        
-        return addr;
+        // Fall back to owner if no valid resolver address is found
+        return owner;
     }
     
     /**
