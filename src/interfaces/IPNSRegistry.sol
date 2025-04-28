@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
+import "../structs/PNSRegistryStructs.sol";
+
 interface IPNSRegistry {
-    // Struct from PNSRegistry
-    struct Record {
-        address owner;
-        address resolver;
-        uint64 ttl;
-    }
+    // Use shared struct from PNSRegistryStructs
 
     // Events
     event NewOwner(bytes32 indexed node, bytes32 indexed label, address owner);

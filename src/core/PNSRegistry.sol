@@ -2,25 +2,17 @@
 pragma solidity ^0.8.26;
 
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import "../structs/PNSRegistryStructs.sol";
+import "../interfaces/IPNSRegistry.sol";
 
 /**
  * @title PNSRegistry
  * @dev Implementation of the ENS registry system
  */
-contract PNSRegistry is Ownable {
-    struct Record {
-        address owner;
-        address resolver;
-        uint64 ttl;
-    }
+contract PNSRegistry is Ownable, IPNSRegistry {
+    // Events are inherited from IPNSRegistry interface
 
-    // Events from ENS standard
-    event NewOwner(bytes32 indexed node, bytes32 indexed label, address owner);
-    event Transfer(bytes32 indexed node, address owner);
-    event NewResolver(bytes32 indexed node, address resolver);
-    event NewTTL(bytes32 indexed node, uint64 ttl);
-
-    mapping(bytes32 => Record) records;
+    mapping(bytes32 => PNSRegistryStructs.Record) records;
 
     constructor() Ownable(msg.sender) {
         // Initialize root node (zero bytes) to the contract deployer
@@ -152,3 +144,4 @@ contract PNSRegistry is Ownable {
         emit Transfer(node, newOwner);
     }
 }
+

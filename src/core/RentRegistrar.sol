@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import "./NFTRegistrar.sol";
 import "./PNSRegistry.sol";
+import "../structs/RentRegistrarStructs.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
@@ -122,20 +123,9 @@ contract RentRegistrar is Ownable {
      */
     event RentPricesUpdated(address indexed updater);
 
-    // ================ Struct Definitions ================
-    /**
-     * @dev Domain ownership and expiry information
-     * @param owner Address of the domain owner
-     * @param expires Timestamp when domain registration expires
-     */
-    struct Domain {
-        address owner;
-        uint256 expires;
-    }
-
     // ================ Storage ================
     /// @dev Mapping from domain name (plain text) to Domain struct
-    mapping(string => Domain) public domains;
+    mapping(string => RentRegistrarStructs.Domain) public domains;
 
     // ================ Constructor ================
     /**
@@ -234,9 +224,9 @@ contract RentRegistrar is Ownable {
     }
 
     /**
-    * @notice Calculate string length
-     * @param s Number of years for domain registration
-     * @return length in wei
+     * @notice Calculate string length
+     * @param s String to measure
+     * @return length in characters (accounting for UTF-8 encoding)
      */
     function _stringLength(string memory s) internal pure returns (uint256) {
         uint256 length = 0;
@@ -271,7 +261,7 @@ contract RentRegistrar is Ownable {
      * @return True if domain is available
      */
     function isAvailable(string memory name) public view returns (bool) {
-        Domain memory domain = domains[name];
+        RentRegistrarStructs.Domain memory domain = domains[name];
         return domain.expires < block.timestamp;
     }
 
@@ -321,7 +311,7 @@ contract RentRegistrar is Ownable {
         uint256 expires = block.timestamp + durationInYears * 365 days;
 
         // Update domain record - now using plain name as key
-        domains[name] = Domain(owner, expires);
+        domains[name] = RentRegistrarStructs.Domain(owner, expires);
 
         // Verify control of root node first
         address rootOwner = ens.owner(rootNode);
@@ -372,7 +362,7 @@ contract RentRegistrar is Ownable {
         }
 
         // Use string directly as key in the mapping
-        Domain storage domain = domains[name];
+        RentRegistrarStructs.Domain storage domain = domains[name];
 
         // Check domain registration
         if (domain.owner == address(0)) {
@@ -418,7 +408,7 @@ contract RentRegistrar is Ownable {
         }
 
         // Access domain directly by name
-        Domain storage domain = domains[name];
+        RentRegistrarStructs.Domain storage domain = domains[name];
 
         // Check domain registration
         if (domain.owner == address(0)) {
@@ -534,3 +524,4 @@ contract RentRegistrar is Ownable {
         emit FundsWithdrawn(owner(), balance);
     }
 }
+

@@ -2,12 +2,11 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Script.sol";
-import "../src/PNSRegistry.sol";
-import "../src/PublicResolver.sol";
-import "../src/NFTRegistrar.sol";
-import "../src/RentRegistrar.sol";
-import "../src/ERC20Transfer.sol";
-
+import "../src/core/PNSRegistry.sol";
+import "../src/core/PublicResolver.sol";
+import "../src/core/NFTRegistrar.sol";
+import "../src/core/RentRegistrar.sol";
+import "../src/core/PNSPaymentRouter.sol";
 
 contract DeployPharosWho is Script {
     function run() external {
@@ -44,9 +43,9 @@ contract DeployPharosWho is Script {
         );
         console.log("RentRegistrar deployed at:", address(rent));
 
-        // Deploy ERC20Transfer
-        ERC20Transfer erc20Transfer = new ERC20Transfer(address(pns));
-        console.log("ERC20Transfer deployed at:", address(erc20Transfer));
+        // Deploy PNSPaymentRouter
+        PNSPaymentRouter paymentRouter = new PNSPaymentRouter(address(pns));
+        console.log("PNSPaymentRouter deployed at:", address(paymentRouter));
 
         // Transfer ownership to RentRegistrar
         pns.setOwner(rootNode, address(rent));

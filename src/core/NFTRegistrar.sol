@@ -127,3 +127,4 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
         }
     }
 }
+

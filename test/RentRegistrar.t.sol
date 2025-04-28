@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {RentRegistrar} from "../src/RentRegistrar.sol";
-import {NFTRegistrar} from "../src/NFTRegistrar.sol";
-import {PNSRegistry} from "../src/PNSRegistry.sol";
+import {RentRegistrar} from "../src/core/RentRegistrar.sol";
+import {NFTRegistrar} from "../src/core/NFTRegistrar.sol";
+import {PNSRegistry} from "../src/core/PNSRegistry.sol";
 
 /**
  * @title RentRegistrarTest
@@ -282,7 +282,7 @@ contract RentRegistrarTest is Test {
 
     // ==================== STRING LENGTH TESTS ====================
 
-    function test_StringLengthCalculation() public {
+    function test_StringLengthCalculation() public view {
         // Based on the _stringLength implementation in RentRegistrar
         // This is testing internal function via its usage in rentPrice
         

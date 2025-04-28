@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
-import "./IPNSRegistry.sol";
+import "../interfaces/IPNSRegistry.sol";
+import "../interfaces/IPublicResolver.sol";
 
-
-contract PublicResolver {
+contract PublicResolver is IPublicResolver {
     IPNSRegistry public pnsRegistry;
 
     mapping(bytes32 => address) public addresses;
@@ -25,3 +25,4 @@ contract PublicResolver {
         return addresses[node];
     }
 }
+
