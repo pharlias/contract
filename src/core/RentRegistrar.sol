@@ -160,10 +160,10 @@ contract RentRegistrar is Ownable {
         }
 
         // Initialize default prices
-        priceForThreeChar = 1 ether;
-        priceForFourToFiveChar = 0.8 ether;
-        priceForSixToNineChar = 0.5 ether;
-        priceForTenPlusChar = 0.1 ether;
+        priceForThreeChar = 0.1 ether;
+        priceForFourToFiveChar = 0.01 ether;
+        priceForSixToNineChar = 0.001 ether;
+        priceForTenPlusChar = 0.0001 ether;
     }
 
     // ================ External Functions ================

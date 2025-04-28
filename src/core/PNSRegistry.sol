@@ -143,5 +143,71 @@ contract PNSRegistry is Ownable, IPNSRegistry {
         records[node].owner = newOwner;
         emit Transfer(node, newOwner);
     }
-}
 
+    /**
+     * @dev Computes the namehash of a given string
+     * @param name The name to hash
+     * @return The namehash of the name
+     * @notice This function implements the namehash algorithm as specified in EIP-137
+     * The algorithm recursively hashes components of the name, starting from the right
+     */
+    function getNodeHash(string calldata name) public pure returns (bytes32) {
+        bytes32 node = 0;
+
+        // Handle empty name case early to save gas
+        bytes calldata nameParts = bytes(name);
+        if (nameParts.length == 0) {
+            return node;
+        }
+
+        // Validate characters with optimized range checks
+        for (uint i = 0; i < nameParts.length; i++) {
+            bytes1 char = nameParts[i];
+            // Optimized character validation - combined checks to reduce gas
+            bool validChar = (// Alphanumeric: 0-9, A-Z, a-z
+            (char >= 0x30 && char <= 0x39) ||
+                (char >= 0x41 && char <= 0x5A) ||
+                (char >= 0x61 && char <= 0x7A) ||
+                // Special characters: hyphen and dot
+                char == 0x2D ||
+                char == 0x2E);
+            require(validChar, "Invalid character in domain name");
+        }
+
+        // Process labels from right to left with minimal memory allocations
+        int length = int(nameParts.length);
+        uint lastDot = uint(length);
+
+        // Single pass through the string
+        for (int i = length - 1; i >= 0; i--) {
+            uint currentPos = uint(i);
+
+            if (nameParts[currentPos] == ".") {
+                // Skip empty labels (consecutive dots)
+                if (lastDot == currentPos + 1) {
+                    lastDot = currentPos;
+                    continue;
+                }
+
+                // Instead of creating a full copy, hash the label directly from the original string
+                bytes32 labelHash = keccak256(
+                    abi.encodePacked(bytes(nameParts[currentPos + 1:lastDot]))
+                );
+
+                // Apply namehash algorithm: node = keccak256(node + keccak256(label))
+                node = keccak256(abi.encodePacked(node, labelHash));
+                lastDot = currentPos;
+            } else if (i == 0) {
+                // Handle the leftmost label efficiently
+                bytes32 labelHash = keccak256(
+                    abi.encodePacked(bytes(nameParts[0:lastDot]))
+                );
+
+                // Apply namehash algorithm for the final label
+                node = keccak256(abi.encodePacked(node, labelHash));
+            }
+        }
+
+        return node;
+    }
+}

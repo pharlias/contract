@@ -563,12 +563,71 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @notice Calculate the node hash for a PNS name
+     * @notice Calculate the node hash for a PNS name using the namehash algorithm
      * @param name The PNS name
      * @return The node hash
+     * @dev Implements the namehash algorithm as specified in EIP-137
+     * The algorithm recursively hashes components of the name, starting from the right
      */
-    function getNodeHash(string memory name) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(bytes32(0), keccak256(bytes(name))));
+    function getNodeHash(string calldata name) public pure returns (bytes32) {
+        bytes32 node = 0;
+        
+        // Handle empty name case early to save gas
+        bytes calldata nameParts = bytes(name);
+        if (nameParts.length == 0) {
+            return node;
+        }
+
+        // Validate characters with optimized range checks
+        for (uint i = 0; i < nameParts.length; i++) {
+            bytes1 char = nameParts[i];
+            // Optimized character validation - combined checks to reduce gas
+            bool validChar = (
+                // Alphanumeric: 0-9, A-Z, a-z
+                (char >= 0x30 && char <= 0x39) || 
+                (char >= 0x41 && char <= 0x5A) || 
+                (char >= 0x61 && char <= 0x7A) || 
+                // Special characters: hyphen and dot
+                char == 0x2D || char == 0x2E
+            );
+            if (!validChar) revert PNSPaymentRouter__InvalidName();
+        }
+
+        // Process labels from right to left with efficient string slicing
+        int length = int(nameParts.length);
+        uint lastDot = uint(length);
+        
+        // Single pass through the string
+        for (int i = length - 1; i >= 0; i--) {
+            uint currentPos = uint(i);
+            
+            if (nameParts[currentPos] == '.') {
+                // Skip empty labels (consecutive dots)
+                if (lastDot == currentPos + 1) {
+                    lastDot = currentPos;
+                    continue;
+                }
+                
+                // Use direct string slicing for label extraction
+                bytes32 labelHash = keccak256(abi.encodePacked(
+                    nameParts[currentPos + 1:lastDot]
+                ));
+                
+                // Apply namehash algorithm: node = keccak256(node + keccak256(label))
+                node = keccak256(abi.encodePacked(node, labelHash));
+                lastDot = currentPos;
+            } else if (i == 0) {
+                // Handle the leftmost label efficiently with string slicing
+                bytes32 labelHash = keccak256(abi.encodePacked(
+                    nameParts[0:lastDot]
+                ));
+                
+                // Apply namehash algorithm for the final label
+                node = keccak256(abi.encodePacked(node, labelHash));
+            }
+        }
+        
+        return node;
     }
     
     /**
@@ -576,20 +635,37 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
      * @param name The PNS name
      * @param node Optional pre-calculated node hash (to save gas)
      * @return The resolved address
+     * @dev This function tries to resolve name using the following steps:
+     * 1. Find the node hash using the namehash algorithm
+     * 2. Check if a resolver is set for the node in the PNS registry
+     * 3. If resolver exists, get the address from the resolver
+     * 4. If no address is set, check the owner of the node as fallback
      */
-    function resolvePNSNameToAddress(string memory name, bytes32 node) public view returns (address) {
+    function resolvePNSNameToAddress(string calldata name, bytes32 node) public view returns (address) {
         // If node hash is not provided, calculate it
         if (node == bytes32(0)) {
             node = getNodeHash(name);
         }
         
+        // First, try to get the owner of the node
+        address owner = pnsRegistry.owner(node);
+        if (owner == address(0)) {
+            revert PNSPaymentRouter__InvalidName();
+        }
+        
         // Get resolver address from PNS registry
         address resolver = pnsRegistry.resolver(node);
-        if (resolver == address(0)) revert PNSPaymentRouter__ResolverNotSet();
+        if (resolver == address(0)) {
+            // If no resolver is set, return the owner as fallback
+            return owner;
+        }
         
         // Get address from resolver
         address addr = IPublicResolver(resolver).addr(node);
-        if (addr == address(0)) revert PNSPaymentRouter__AddressNotSetInResolver();
+        if (addr == address(0)) {
+            // If no address is set in resolver, return the owner as fallback
+            return owner;
+        }
         
         return addr;
     }
@@ -607,5 +683,72 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         
         // Otherwise, check if the specific token is supported
         return supportedTokens[token];
+    }
+
+    /**
+     * @notice Debug function to trace PNS name resolution process
+     * @param name The PNS name to resolve
+     * @return nodeHash The calculated node hash
+     * @return ownerAddress The owner address from registry
+     * @return resolverAddress The resolver address
+     * @return resolverResult The address from resolver (if available)
+     * @return finalAddress The final resolved address 
+     * @dev This function exposes each step of the resolution process for debugging
+     */
+    function debugPNSResolution(string calldata name) public view returns (
+        bytes32 nodeHash,
+        address ownerAddress,
+        address resolverAddress,
+        address resolverResult,
+        address finalAddress
+    ) {
+        // Step 1: Calculate node hash
+        nodeHash = getNodeHash(name);
+        
+        // Step 2: Get owner from registry
+        try pnsRegistry.owner(nodeHash) returns (address owner) {
+            ownerAddress = owner;
+            
+            // Step 3: Get resolver address
+            try pnsRegistry.resolver(nodeHash) returns (address resolver) {
+                resolverAddress = resolver;
+                
+                // Step 4: If resolver exists, try to get address from it
+                if (resolver != address(0)) {
+                    try IPublicResolver(resolver).addr(nodeHash) returns (address addr) {
+                        resolverResult = addr;
+                        
+                        // If resolver returns a valid address, use it
+                        if (addr != address(0)) {
+                            finalAddress = addr;
+                        } else {
+                            // Otherwise fallback to owner
+                            finalAddress = owner;
+                        }
+                    } catch {
+                        // Error calling resolver, fallback to owner
+                        resolverResult = address(0);
+                        finalAddress = owner;
+                    }
+                } else {
+                    // No resolver, use owner
+                    resolverResult = address(0);
+                    finalAddress = owner;
+                }
+            } catch {
+                // Failed to get resolver, use owner
+                resolverAddress = address(0);
+                resolverResult = address(0);
+                finalAddress = owner;
+            }
+        } catch {
+            // Failed to get owner
+            ownerAddress = address(0);
+            resolverAddress = address(0);
+            resolverResult = address(0);
+            finalAddress = address(0);
+        }
+        
+        return (nodeHash, ownerAddress, resolverAddress, resolverResult, finalAddress);
     }
 }
