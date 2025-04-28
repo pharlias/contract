@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "./NFTRegistrar.sol";
-import "./ENSRegistry.sol";
+import "./PNSRegistry.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
@@ -39,10 +39,15 @@ contract RentRegistrar is Ownable {
     error RentRegistrar__DomainExpired(string name, uint256 expiry);
     error RentRegistrar__ENSUpdateFailed(bytes32 node);
     error RentRegistrar__InvalidENSNode();
+    error RentRegistrar__InvalidPriceAmount();
+    error NameMustBeAtLeastThreeCharacter(
+        string name,
+        uint256 length
+    );
 
     // ================ State Variables ================
     /// @notice ENS registry contract reference
-    ENSRegistry public ens;
+    PNSRegistry public ens;
 
     /// @notice NFT token contract reference
     NFTRegistrar public nft;
@@ -50,8 +55,11 @@ contract RentRegistrar is Ownable {
     /// @notice Root node for domain names in the ENS registry
     bytes32 public rootNode;
 
-    /// @notice Yearly rent price for domain registration
-    uint256 public yearlyRent = 0.0001 ether;
+    /// @notice Yearly rent prices for domain registration based on length
+    uint256 public priceForThreeChar;       // Price for 3-character domains
+    uint256 public priceForFourToFiveChar;  // Price for 4-5 character domains
+    uint256 public priceForSixToNineChar;   // Price for 6-9 character domains
+    uint256 public priceForTenPlusChar;     // Price for 10+ character domains
 
     // ================ Events ================
     /**
@@ -108,6 +116,12 @@ contract RentRegistrar is Ownable {
      */
     event ENSRecordUpdated(bytes32 indexed node, address indexed owner);
 
+    /**
+     * @notice Emitted when rent prices are updated
+     * @param updater Address that updated the prices
+     */
+    event RentPricesUpdated(address indexed updater);
+
     // ================ Struct Definitions ================
     /**
      * @dev Domain ownership and expiry information
@@ -131,7 +145,7 @@ contract RentRegistrar is Ownable {
      * @param _rootNode Root node for domain names
      */
     constructor(
-        ENSRegistry _ens,
+        PNSRegistry _ens,
         NFTRegistrar _nft,
         bytes32 _rootNode
     ) Ownable(msg.sender) {
@@ -154,16 +168,101 @@ contract RentRegistrar is Ownable {
         if (rootOwner != address(this) && rootOwner != msg.sender) {
             revert RentRegistrar__InvalidRootNode();
         }
+
+        // Initialize default prices
+        priceForThreeChar = 1 ether;
+        priceForFourToFiveChar = 0.8 ether;
+        priceForSixToNineChar = 0.5 ether;
+        priceForTenPlusChar = 0.1 ether;
     }
 
     // ================ External Functions ================
     /**
      * @notice Calculate the rent price for a given duration
      * @param numYears Number of years for domain registration
+     * @param name Domain name to calculate price for
      * @return Price in wei
      */
-    function rentPrice(uint256 numYears) public view returns (uint256) {
-        return yearlyRent * numYears;
+    function rentPrice(uint256 numYears, string memory name) public view returns (uint256) {
+        uint256 len = _stringLength(name);
+        require(len >= 3, "Make it loooong!");
+
+        uint256 pricePerYear;
+        if (len == 3) {
+            pricePerYear = priceForThreeChar;
+        } else if (len >= 4 && len <= 5) {
+            pricePerYear = priceForFourToFiveChar;
+        } else if (len >= 6 && len <= 9) {
+            pricePerYear = priceForSixToNineChar;
+        } else {
+            pricePerYear = priceForTenPlusChar;
+        }
+
+        return pricePerYear * numYears;
+    }
+
+    /**
+     * @notice Update rent prices for domains
+     * @param _priceForThreeChar Price for 3-character domains (in wei)
+     * @param _priceForFourToFiveChar Price for 4-5 character domains (in wei)
+     * @param _priceForSixToNineChar Price for 6-9 character domains (in wei)
+     * @param _priceForTenPlusChar Price for 10+ character domains (in wei)
+     * @dev Only contract owner can call this function
+     */
+    function updateRentPrice(
+        uint256 _priceForThreeChar,
+        uint256 _priceForFourToFiveChar,
+        uint256 _priceForSixToNineChar,
+        uint256 _priceForTenPlusChar
+    ) external onlyOwner {
+        // Validate prices are reasonable (non-zero)
+        if (_priceForThreeChar == 0 || 
+            _priceForFourToFiveChar == 0 || 
+            _priceForSixToNineChar == 0 || 
+            _priceForTenPlusChar == 0) {
+            revert RentRegistrar__InvalidPriceAmount();
+        }
+
+        // Update price state variables
+        priceForThreeChar = _priceForThreeChar;
+        priceForFourToFiveChar = _priceForFourToFiveChar;
+        priceForSixToNineChar = _priceForSixToNineChar;
+        priceForTenPlusChar = _priceForTenPlusChar;
+
+        // Emit event to notify price update
+        emit RentPricesUpdated(msg.sender);
+    }
+
+    /**
+    * @notice Calculate string length
+     * @param s Number of years for domain registration
+     * @return length in wei
+     */
+    function _stringLength(string memory s) internal pure returns (uint256) {
+        uint256 length = 0;
+        uint256 i = 0;
+        bytes memory string_rep = bytes(s);
+
+        while (i < string_rep.length) {
+            uint8 b = uint8(string_rep[i]);
+            // UTF-8 multi-byte character handling
+            if (b < 0x80) {
+                i += 1;
+            } else if (b < 0xE0) {
+                i += 2;
+            } else if (b < 0xF0) {
+                i += 3;
+            } else if (b < 0xF8) {
+                i += 4;
+            } else if (b < 0xFC) {
+                i += 5;
+            } else {
+                i += 6;
+            }
+            length++;
+        }
+
+        return length;
     }
 
     /**
@@ -190,6 +289,9 @@ contract RentRegistrar is Ownable {
         string memory tokenURI
     ) external payable {
         // Validate inputs
+        if (_stringLength(name) < 3) {
+            revert NameMustBeAtLeastThreeCharacter(name, _stringLength(name));
+        }
         if (durationInYears < 1) {
             revert RentRegistrar__InsufficientDuration(durationInYears, 1);
         }
@@ -203,7 +305,7 @@ contract RentRegistrar is Ownable {
         }
 
         // Check payment
-        uint256 price = rentPrice(durationInYears);
+        uint256 price = rentPrice(durationInYears, name);
         if (msg.value < price) {
             revert RentRegistrar__InsufficientPayment(price, msg.value);
         }
@@ -287,7 +389,7 @@ contract RentRegistrar is Ownable {
         }
 
         // Check payment
-        uint256 price = rentPrice(additionalYears);
+        uint256 price = rentPrice(additionalYears, name);
         if (msg.value < price) {
             revert RentRegistrar__InsufficientPayment(price, msg.value);
         }
@@ -430,13 +532,5 @@ contract RentRegistrar is Ownable {
         }
 
         emit FundsWithdrawn(owner(), balance);
-    }
-
-    /**
-     * @notice Update the yearly rent price
-     * @param newYearlyRent New yearly rent in wei
-     */
-    function updateYearlyRent(uint256 newYearlyRent) external onlyOwner {
-        yearlyRent = newYearlyRent;
     }
 }

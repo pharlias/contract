@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Script.sol";
-import "../src/ENSRegistry.sol";
+import "../src/PNSRegistry.sol";
 import "../src/PublicResolver.sol";
 import "../src/NFTRegistrar.sol";
 import "../src/RentRegistrar.sol";
@@ -14,10 +14,10 @@ contract DeployPharosWho is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy base contracts
-        ENSRegistry ens = new ENSRegistry();
-        console.log("ENSRegistry deployed at:", address(ens));
+        PNSRegistry pns = new PNSRegistry();
+        console.log("PNSRegistry deployed at:", address(pns));
 
-        PublicResolver resolver = new PublicResolver();
+        PublicResolver resolver = new PublicResolver(address(pns));
         console.log("PublicResolver deployed at:", address(resolver));
 
         NFTRegistrar nft = new NFTRegistrar();
@@ -31,19 +31,19 @@ contract DeployPharosWho is Script {
         // Create pharos node under root node and set the deployer as the owner
         // This allows the RentRegistrar to verify ownership in its constructor
         address deployer = vm.addr(deployerPrivateKey);
-        ens.setSubnodeOwner(emptyNode, pharosLabel, deployer);
+        pns.setSubnodeOwner(emptyNode, pharosLabel, deployer);
         console.log("Pharos subnode created and owned by deployer");
 
         // Deploy RentRegistrar - now the deployer owns the rootNode
         RentRegistrar rent = new RentRegistrar(
-            ens,
+            pns,
             nft,
             rootNode
         );
         console.log("RentRegistrar deployed at:", address(rent));
 
         // Transfer ownership to RentRegistrar
-        ens.setOwner(rootNode, address(rent));
+        pns.setOwner(rootNode, address(rent));
         console.log("Root node ownership transferred to RentRegistrar");
 
         nft.transferOwnership(address(rent));

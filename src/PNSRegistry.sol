@@ -4,10 +4,10 @@ pragma solidity ^0.8.26;
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
- * @title ENSRegistry
+ * @title PNSRegistry
  * @dev Implementation of the ENS registry system
  */
-contract ENSRegistry is Ownable {
+contract PNSRegistry is Ownable {
     struct Record {
         address owner;
         address resolver;
