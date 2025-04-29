@@ -7,6 +7,7 @@ import "../src/core/PublicResolver.sol";
 import "../src/core/NFTRegistrar.sol";
 import "../src/core/RentRegistrar.sol";
 import "../src/core/PNSPaymentRouter.sol";
+import "../src/Pharlias.sol";  // Add Pharlias import
 
 contract DeployPharosWho is Script {
     function run() external {
@@ -46,6 +47,10 @@ contract DeployPharosWho is Script {
         // Deploy PNSPaymentRouter
         PNSPaymentRouter paymentRouter = new PNSPaymentRouter(address(pns));
         console.log("PNSPaymentRouter deployed at:", address(paymentRouter));
+
+        // Deploy Pharlias
+        Pharlias pharlias = new Pharlias();
+        console.log("Pharlias deployed at:", address(pharlias));
 
         // Transfer ownership to RentRegistrar
         pns.setOwner(rootNode, address(rent));

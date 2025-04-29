@@ -134,12 +134,14 @@ contract PNSPaymentRouterTest is Test {
     // Events to test
     event ETHTransferToPNS(
         address indexed sender,
-        bytes32 indexed node,
+        address indexed recipient,
+        string name,
         uint256 amount
     );
     event ERC20TransferToPNS(
         address indexed sender,
-        bytes32 indexed node,
+        address indexed recipient,
+        string name,
         address indexed token,
         uint256 amount
     );
@@ -315,8 +317,18 @@ contract PNSPaymentRouterTest is Test {
 
         // Execute transfer
         vm.deal(address(this), TRANSFER_AMOUNT);
+        
+        // Get the resolved address before transfer
+        address resolvedAddr = paymentRouter.resolvePNSNameToAddress(TEST_NAME, testNode);
+
+        // Execute transfer
         vm.expectEmit(true, true, true, true);
-        emit ETHTransferToPNS(address(this), testNode, TRANSFER_AMOUNT);
+        emit ETHTransferToPNS(
+            address(this),     // sender
+            resolvedAddr,      // recipient
+            TEST_NAME,         // name
+            TRANSFER_AMOUNT    // amount
+        );
         paymentRouter.transferETHToPNS{value: TRANSFER_AMOUNT}(TEST_NAME);
 
         // Verify balances
@@ -503,20 +515,24 @@ contract PNSPaymentRouterTest is Test {
         token1.mint(address(this), TOKEN_AMOUNT);
         vm.stopPrank();
 
-        // Calculate expected fee
+        // Calculate expected fee and transfer amount
         uint256 expectedFee = (TOKEN_AMOUNT * FEE_PERCENTAGE) / 10000;
         uint256 expectedTransferAmount = TOKEN_AMOUNT - expectedFee;
+
+        // Get resolved address before transfer
+        address resolvedAddr = paymentRouter.resolvePNSNameToAddress(TEST_NAME, testNode);
 
         // Approve the payment router to spend tokens
         token1.approve(address(paymentRouter), TOKEN_AMOUNT);
 
         // Execute transfer
-        vm.expectEmit(true, true, true, false);
+        vm.expectEmit(true, true, true, true);
         emit ERC20TransferToPNS(
-            address(this),
-            testNode,
-            address(token1),
-            TOKEN_AMOUNT
+            address(this),     // sender
+            resolvedAddr,      // recipient
+            TEST_NAME,         // name
+            address(token1),   // token
+            TOKEN_AMOUNT       // amount
         );
         paymentRouter.transferERC20ToPNS(
             TEST_NAME,

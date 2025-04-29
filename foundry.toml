@@ -16,7 +16,9 @@ remappings = [
 [rpc_endpoints]
 pharos-rpc = "https://devnet.dplabs-internal.com/"
 base-sepolia-rpc = "https://base-sepolia.g.alchemy.com/v2/nb48axA6M0oR5LExpqPoqE9_MKIvKo6m"
+holesky-rpc = "https://eth-holesky.g.alchemy.com/v2/vwDTCZX0XZnU6flxj8YzYZuMaOKI3EX9"
 
 [etherscan]
 base-sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
 pharos = { key = "${ETHERSCAN_API_KEY}", url = "https://devnet-explorer.dplabs-internal.com/api" }
+holesky = { key = "${ETHERSCAN_HOLESKY_API_KEY}", url = "https://api.holesky.bnbchain.org/api" }
