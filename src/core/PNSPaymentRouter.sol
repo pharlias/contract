@@ -60,6 +60,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
      */
     event ETHTransferToPNS(
         address indexed sender, 
+        address indexed recipient,
         string name, 
         uint256 amount
     );
@@ -73,6 +74,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
      */
     event ERC20TransferToPNS(
         address indexed sender, 
+        address indexed recipient,
         string name, 
         address indexed token, 
         uint256 amount
@@ -242,7 +244,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         interactionCount[msg.sender]++;
         
         // Emit event
-        emit ETHTransferToPNS(msg.sender, name, msg.value);
+        emit ETHTransferToPNS(msg.sender, recipient, name, msg.value);
     }
     
     /**
@@ -298,7 +300,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         interactionCount[msg.sender]++;
         
         // Emit event
-        emit ERC20TransferToPNS(msg.sender, name, token, amount);
+        emit ERC20TransferToPNS(msg.sender, recipient, name, token, amount);
     }
     
     /**
