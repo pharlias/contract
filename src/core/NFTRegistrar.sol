@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import "../interfaces/IPharlias.sol";
+import "../structs/PharliaStructs.sol";
 
 /**
  * @title NFTRegistrar
@@ -22,6 +24,7 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
     error NFTRegistrar__EmptyTokenURI();
     error NFTRegistrar__EmptyDomainName();
     error NFTRegistrar__DomainNameNotFound(uint256 tokenId);
+    error NFTRegistrar__InvalidPharliasAddress();
 
     // Events for better tracking and indexing
     // Note: String parameters are intentionally not indexed to allow full value access
@@ -33,10 +36,35 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
     );
     event TokenBurned(uint256 indexed tokenId, address indexed previousOwner, string domainName);
     event DomainNameRegistered(uint256 indexed tokenId, string domainName);
+    
     // Mapping from token ID to original domain name
     mapping(uint256 => string) private _domainNames;
+    
+    // Pharlias points system contract reference
+    IPharlias public pharlias;
+    
+    // Flag to enable/disable points calculation
+    bool public pointsEnabled;
 
-    constructor() ERC721("Domain NFT", "DOMAIN") Ownable(msg.sender) {}
+    constructor() ERC721("Domain NFT", "DOMAIN") Ownable(msg.sender) {
+        // Points system is disabled by default until setPharlias is called
+        pointsEnabled = false;
+    }
+    
+    /**
+     * @notice Set the Pharlias points system contract address
+     * @param _pharlias Address of the Pharlias contract
+     * @param _enabled Whether to enable points calculation
+     * @dev Only contract owner can call this function
+     */
+    function setPharlias(IPharlias _pharlias, bool _enabled) external onlyOwner {
+        if (address(_pharlias) == address(0)) {
+            revert NFTRegistrar__InvalidPharliasAddress();
+        }
+        
+        pharlias = _pharlias;
+        pointsEnabled = _enabled;
+    }
 
     /**
      * @dev Mints a new token for a domain.
@@ -69,6 +97,17 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
             
             emit DomainNameRegistered(tokenId, domainName);
             emit TokenMinted(to, tokenId, tokenURI_, domainName);
+            
+            // Award points for PNS creation if points system is enabled
+            if (pointsEnabled && address(pharlias) != address(0)) {
+                try pharlias.awardPoints(to, PharliaStructs.ACTIVITY_PNS_CREATION) {
+                    // Points awarded successfully
+                } catch {
+                    // Points award failed, but minting succeeded
+                    // We don't revert as the main minting process should still succeed
+                }
+            }
+            
             return true;
         }
     }
@@ -92,6 +131,17 @@ contract NFTRegistrar is ERC721URIStorage, Ownable {
             delete _domainNames[tokenId];
             
             emit TokenBurned(tokenId, previousOwner, domainName);
+            
+            // Award points for token burn/transfer if points system is enabled
+            if (pointsEnabled && address(pharlias) != address(0)) {
+                try pharlias.awardPoints(previousOwner, PharliaStructs.ACTIVITY_TRANSFER) {
+                    // Points awarded successfully
+                } catch {
+                    // Points award failed, but burning succeeded
+                    // We don't revert as the main burning process should still succeed
+                }
+            }
+            
             return true;
         } catch {
             revert NFTRegistrar__TokenDoesNotExist(tokenId);

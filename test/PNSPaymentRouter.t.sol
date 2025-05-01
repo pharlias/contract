@@ -963,7 +963,7 @@ contract PNSPaymentRouterTest is Test {
         vm.prank(ADMIN);
         vm.expectEmit(true, true, false, false);
         emit FundsWithdrawn(ADMIN, depositAmount);
-        paymentRouter.withdrawETH();
+        paymentRouter.withdraw();
 
         // Verify balances
         assertEq(

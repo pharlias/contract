@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import "../interfaces/IPNSRegistry.sol";
 import "../interfaces/IPublicResolver.sol";
+import "../interfaces/IPharlias.sol";
+import "../structs/PharliaStructs.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -28,6 +30,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
     error PNSPaymentRouter__BatchArrayMismatch();
     error PNSPaymentRouter__NoFundsToWithdraw();
     error PNSPaymentRouter__TransferFailed();
+    error PNSPaymentRouter__InvalidPharliasAddress();
 
     // ================ State Variables ================
     /// @notice PNS Registry contract reference
@@ -50,6 +53,12 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
     
     /// @notice Contract pause state
     bool public paused;
+    
+    /// @notice Pharlias points system contract reference
+    IPharlias public pharlias;
+    
+    /// @notice Flag to enable/disable points calculation
+    bool public pointsEnabled;
 
     // ================ Events ================
     /**
@@ -169,15 +178,24 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
     );
 
     // ================ Modifiers ================
+    
     /**
-     * @notice Ensures the contract is not paused
+     * @notice Modifier to check if contract is not paused
      */
     modifier whenNotPaused() {
         if (paused) revert PNSPaymentRouter__ContractPaused();
         _;
     }
-
-    // ================ Constructor ================
+    
+    /**
+     * @notice Emitted when Pharlias contract address is updated
+     * @param pharliasAddress The updated Pharlias contract address
+     * @param enabled Whether points calculation is enabled
+     */
+    event PharliasUpdated(
+        address indexed pharliasAddress,
+        bool enabled
+    );
     /**
      * @notice Contract constructor
      * @param _pnsRegistry Address of the PNS Registry contract
@@ -188,6 +206,7 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         pnsRegistry = IPNSRegistry(_pnsRegistry);
         feeCollector = msg.sender;
         feePercentage = 0; // No fee by default
+        pointsEnabled = false; // Points disabled by default
     }
 
     // ================ Receive & Fallback ================
@@ -242,6 +261,16 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         
         // Increment interaction count
         interactionCount[msg.sender]++;
+        
+        // Award points for ETH transfer if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(msg.sender, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
         
         // Emit event
         emit ETHTransferToPNS(msg.sender, recipient, name, msg.value);
@@ -299,6 +328,16 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         // Increment interaction count
         interactionCount[msg.sender]++;
         
+        // Award points for ERC20 transfer if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(msg.sender, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
+        
         // Emit event
         emit ERC20TransferToPNS(msg.sender, recipient, name, token, amount);
     }
@@ -337,6 +376,24 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         
         // Increment interaction count
         interactionCount[msg.sender]++;
+        
+        // Award points for ETH payment if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(msg.sender, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+            
+            // Award points to recipient too
+            try pharlias.awardPoints(recipient, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to recipient
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
         
         // Emit event
         emit ETHPaymentSent(msg.sender, recipient, transferAmount, fee);
@@ -387,6 +444,24 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
         
         // Increment interaction count
         interactionCount[msg.sender]++;
+        
+        // Award points for ERC20 payment if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(msg.sender, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+            
+            // Award points to recipient too
+            try pharlias.awardPoints(recipient, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to recipient
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
         
         // Emit event
         emit ERC20PaymentSent(msg.sender, recipient, token, transferAmount, fee);
@@ -446,12 +521,31 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
                     if (!recoverySuccess) revert PNSPaymentRouter__ERC20TransferFailed();
                 }
             }
-            
             emit ERC20PaymentSent(msg.sender, recipient, token, transferAmount, fee);
+            
+            // Award points for each transfer if points system is enabled
+            if (pointsEnabled && address(pharlias) != address(0)) {
+                try pharlias.awardPoints(recipient, PharliaStructs.ACTIVITY_TRANSFER) {
+                    // Points awarded successfully to recipient
+                } catch {
+                    // Points award failed, but transfer succeeded
+                    // We don't revert as the main transfer process should still succeed
+                }
+            }
         }
         
         // Increment interaction count (only once for batch operation)
         interactionCount[msg.sender]++;
+        
+        // Award points to sender once for batch transfer
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(msg.sender, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
         
         // Emit batch event
         emit BatchPaymentSent(msg.sender, count);
@@ -518,9 +612,35 @@ contract PNSPaymentRouter is Ownable, ReentrancyGuard {
     }
     
     /**
+     * @notice Set the Pharlias points system contract address
+     * @param _pharlias Address of the Pharlias contract
+     * @param _enabled Whether to enable points calculation
+     */
+    function setPharlias(IPharlias _pharlias, bool _enabled) external onlyOwner {
+        if (address(_pharlias) == address(0)) {
+            revert PNSPaymentRouter__InvalidPharliasAddress();
+        }
+        
+        pharlias = _pharlias;
+        pointsEnabled = _enabled;
+        
+        emit PharliasUpdated(address(_pharlias), _enabled);
+    }
+    
+    /**
+     * @notice Set the points calculation enabled status
+     * @param _enabled Whether to enable points calculation
+     */
+    function setPointsEnabled(bool _enabled) external onlyOwner {
+        pointsEnabled = _enabled;
+        
+        emit PharliasUpdated(address(pharlias), _enabled);
+    }
+    
+    /**
      * @notice Withdraw ETH from the contract
      */
-    function withdrawETH() external onlyOwner {
+    function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
         if (balance == 0) revert PNSPaymentRouter__NoFundsToWithdraw();
         

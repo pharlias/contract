@@ -4,6 +4,8 @@ pragma solidity ^0.8.26;
 import "./NFTRegistrar.sol";
 import "./PNSRegistry.sol";
 import "../structs/RentRegistrarStructs.sol";
+import "../structs/PharliaStructs.sol";
+import "../interfaces/IPharlias.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
@@ -41,11 +43,12 @@ contract RentRegistrar is Ownable {
     error RentRegistrar__ENSUpdateFailed(bytes32 node);
     error RentRegistrar__InvalidENSNode();
     error RentRegistrar__InvalidPriceAmount();
+    error RentRegistrar__InvalidPharliasAddress();
+    error RentRegistrar__PointsAwardFailed();
     error NameMustBeAtLeastThreeCharacter(
         string name,
         uint256 length
     );
-
     // ================ State Variables ================
     /// @notice ENS registry contract reference
     PNSRegistry public ens;
@@ -56,6 +59,11 @@ contract RentRegistrar is Ownable {
     /// @notice Root node for domain names in the ENS registry
     bytes32 public rootNode;
 
+    /// @notice Pharlias points system contract reference
+    IPharlias public pharlias;
+
+    /// @notice Flag to enable/disable points calculation
+    bool public pointsEnabled;
     /// @notice Yearly rent prices for domain registration based on length
     uint256 public priceForThreeChar;       // Price for 3-character domains
     uint256 public priceForFourToFiveChar;  // Price for 4-5 character domains
@@ -152,6 +160,9 @@ contract RentRegistrar is Ownable {
         ens = _ens;
         nft = _nft;
         rootNode = _rootNode;
+        
+        // Points system is disabled by default until setPharlias is called
+        pointsEnabled = false;
 
         // Verify ownership of root node - contract must be able to control root node
         address rootOwner = _ens.owner(_rootNode);
@@ -221,6 +232,21 @@ contract RentRegistrar is Ownable {
 
         // Emit event to notify price update
         emit RentPricesUpdated(msg.sender);
+    }
+
+    /**
+     * @notice Set the Pharlias points system contract address
+     * @param _pharlias Address of the Pharlias contract
+     * @param _enabled Whether to enable points calculation
+     * @dev Only contract owner can call this function
+     */
+    function setPharlias(IPharlias _pharlias, bool _enabled) external onlyOwner {
+        if (address(_pharlias) == address(0)) {
+            revert RentRegistrar__InvalidPharliasAddress();
+        }
+        
+        pharlias = _pharlias;
+        pointsEnabled = _enabled;
     }
 
     /**
@@ -345,6 +371,16 @@ contract RentRegistrar is Ownable {
         }
 
         emit DomainRegistered(name, owner, expires, tokenId);
+        
+        // Award points for PNS creation if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(owner, PharliaStructs.ACTIVITY_PNS_CREATION) {
+                // Points awarded successfully
+            } catch {
+                // Points award failed, but registration succeeded
+                // We don't revert as the main registration process should still succeed
+            }
+        }
     }
 
     /**
@@ -473,6 +509,24 @@ contract RentRegistrar is Ownable {
         }
 
         emit DomainTransferred(name, previousOwner, newOwner, tokenId);
+        
+        // Award points for transfer if points system is enabled
+        if (pointsEnabled && address(pharlias) != address(0)) {
+            try pharlias.awardPoints(previousOwner, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to the sender
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+            
+            // Optionally award points to the recipient as well
+            try pharlias.awardPoints(newOwner, PharliaStructs.ACTIVITY_TRANSFER) {
+                // Points awarded successfully to the recipient
+            } catch {
+                // Points award failed, but transfer succeeded
+                // We don't revert as the main transfer process should still succeed
+            }
+        }
     }
 
     /**
